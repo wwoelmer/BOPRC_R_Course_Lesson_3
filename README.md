@@ -9,6 +9,7 @@ and plotting time series data.
 The main packages that we will use in this tutorial are:
 
 - **tidyverse**
+- **lubridate**
 
 Before attempting to install these packages, make sure your Primary CRAN
 Repository is set to:
@@ -31,22 +32,28 @@ library(tidyverse)
 library(lubridate)
 ```
 
-First we will load in our data
+First we will load in our data. This data has been downloaded from
+Aquarius using the R script which you can find ing
+`scripts/download_data_aquarius.R`. If you’d like to see how the data
+were downloaded. For today, we are skipping that step and reading in
+directly from a .csv file which was written after the Aquarius download.
 
 ``` r
 wq <- read.csv('./data/Lake_WQ_Timeseries.csv')
 ```
 
-Now, open the `wq` dataframe by clicking on it in the environment and
-familiarise yourself with the columns. Let’s select just a few which we
-want to work with, using the `select` function
+Now, look at the `wq` dataframe by clicking on it in the environment and
+familiarise yourself with the columns. There is a lot of metadata here,
+but let’s select just a few which we want to work with, using the
+`select` function
 
 ``` r
 wq <- wq %>% 
   select(LocationName:Value, Parameter, Unit) # list the columns you want to keep, you can use, e.g. col1:col3 to select a range of columns
 ```
 
-What are the lakes which are included in this data?
+Using the `uniqui` function, let’s see what are the lakes which are
+included in this dataset?
 
 ``` r
 unique(wq$LocationName)
@@ -69,8 +76,8 @@ unique(wq$LocationName)
 
 ------------------------------------------------------------------------
 
-***Challenge 1:*** *Using the same `unique()` function, what variables
-are included in this dataset, in the `Parameter` column?*
+***Challenge 1:*** *Using the same `unique` function, what water quality
+variables are included in this dataset, in the `Parameter` column?*
 
 <details>
 <summary>
@@ -97,7 +104,8 @@ annoying to work with in R. Let’s clean that up. We will use a function
 called `recode` which can be used to change the name of a value in a
 column. Here, we are saying take the `wq` dataframe, and mutate the
 column `Parameter` such that the values of `Parameter` which currently
-equal “TN (g/m^3)”, will be rewritten as “TN_gm3”.
+equal “TN (g/m^3)”, will be rewritten as “TN_gm3”. We will also do this
+for TP here.
 
 ``` r
 wq <- wq %>%
@@ -146,7 +154,11 @@ Let’s say we’re interested in a plot of chl-a, but we want to color it
 based on the Secchi depth in that lake. Our dataset is in long format,
 so in order to do this, we need to make it into wide format (e.g.,
 instead of Parameters as a column, TN, TP, chla, and Secchi will be
-their own columns, with the vaues in that column)
+their own columns, with the values in that column). We will use the
+`pivot_wider` function to do this, where you give the function the name
+of the column where the new columns will come from (here
+`names_from = 'Parameter'`), and the name of the column where the actual
+numbers will come from (here `values_from = 'Value'`)
 
 ``` r
 wq_wide <- wq %>%
@@ -164,12 +176,13 @@ wq_wide <- wq %>%
 
 That threw some warnings, so let’s look at the dataframe and see if
 everything looks ok. When we open up `wq_wide`, we see there are a lot
-of “NULL” values for the different columns. That is because our `Time`
-column is very specific, and includes not just dates but times, which
-aren’t really important in this case. We also have the `Unit` column,
-which is not the same across parameters and is causing an issue. Let’s
-create a `Date` column, remove `Time` and `Unit`, and try making the
-dataframe wide again
+of “NULL” values for the different columns–that doesn’t look right. That
+is because our `Time` column is very specific, and includes not just
+dates but times which are not common across all the parameters. The time
+components isn’t really important in this case. We also have the `Unit`
+column, which is not the same across parameters and is causing an issue.
+Let’s create a `Date` column, remove `Time` and `Unit`, and try making
+the dataframe wide again
 
 ``` r
 wq_wide <- wq %>%
@@ -187,7 +200,7 @@ wq_wide <- wq %>%
     ##   dplyr::filter(n > 1L)
 
 Hmm, that still throws a warning. If we look at `wq_wide` again, we see
-that there are some columns, which have two values in them (e.g., Lake
+that there are some columns which have two values in them (e.g., Lake
 Rotoma on 2015-01-20 has two entries for TP). To fix this, let’s take
 the average on a given day for a given lake if there is more than one
 reading. We will need to introduce a couple of new functions to
@@ -198,11 +211,12 @@ accomplish this.
 `group_by` is a `tidyverse` function which allows you to do calculations
 by different groups (e.g., the LocationName column). It is usually
 paired with another function which does the calculation. For example,
-`summarise` is a `tidyverse` function which, as it sounds, summarises by
-a given function, typically taking the mean, minimum, or some other
-summary statistic. This function results in a short dataframe, because
-you’ve summarised the values. We will pair `group_by` with `summarise`
-to create summary statistics for each lake.
+`summarise` is another `tidyverse` function which, as it sounds,
+summarises by a given function. I often use this to take the mean,
+minimum, or some other summary statistic. This function results in a
+shorter dataframe, because you’ve summarised the values by your grouping
+factors. We will pair `group_by` with `summarise` to create summary
+statistics for each lake.
 
 ``` r
 wq_wide <- wq %>% 
@@ -213,9 +227,9 @@ wq_wide <- wq %>%
   pivot_wider(names_from = 'Parameter', values_from = 'Value') # then we pivot wider
 ```
 
-Viola! No warnings and our dataframe looks good!! Ok, now let’s make a
-plot of chl-a over time, but colored in by Secchi (our original goal
-before all that data manipulation…)
+Viola! No warnings and our dataframe looks good (make sure you look at
+it)!! Ok, now let’s make a plot of chl-a over time, but colored in by
+Secchi (our original goal before all that data manipulation…)
 
 ``` r
 ggplot(wq_wide, aes(x = as.Date(Date), y = chla_mgm3, color = secchi_m)) + geom_point() +
@@ -250,6 +264,9 @@ Click to see a solution
 wq_long <- wq_wide %>%
     pivot_longer(TN_gm3:secchi_m, names_to = "Parameter", values_to = "Value")
 
+# first you specify which columns are getting pivot-ted longer, we can use the
+# colon : to say all the columns between TN and secchi
+
 # being able to pivot between wide and long format is really helpful for
 # different types of analyses and plotting!
 ```
@@ -262,7 +279,8 @@ wq_long <- wq_wide %>%
 
 ***Challenge 3b:*** *Now that you’ve made your wq_long dataframe, try
 making a plot with Date on the x-axis, Value on the y-axis, color by
-Parameter, and facet_wrap by LocationName*
+Parameter, and facet_wrap by LocationName. Use `geom_line` instead of
+`geom_point`*
 
 <details>
 <summary>
@@ -291,8 +309,9 @@ package
 wq_summary <- wq %>%
     mutate(year = year(Time)) %>%
     group_by(LocationName, Parameter, year) %>%
-    summarise(mean = mean(Value, na.rm = TRUE), min = min(Value, na.rm = TRUE), max = max(Value,
-        na.rm = TRUE), sd = sd(Value, na.rm = TRUE))
+    summarise(mean = mean(Value, na.rm = TRUE), median = median(Value, na.rm = TRUE),
+        min = min(Value, na.rm = TRUE), max = max(Value, na.rm = TRUE), sd = sd(Value,
+            na.rm = TRUE))
 ```
 
 View the wq_summary dataframe and familiarise yourself with it. Let’s
@@ -327,7 +346,7 @@ Click to see a solution
 wq_summary %>% 
   filter(LocationName=="Lake Rotorua at Site 2 (Integrated)") %>% # only plot TN
   ggplot(aes(x = year, y = mean)) +
-  geom_point() +
+  geom_point(size = 2) +
   scale_x_continuous(breaks = seq(min(wq_summary$year), max(wq_summary$year), by = 1)) + #formats the years on the x-axis
   facet_wrap(~Parameter, scales = 'free') +
   theme_bw() +
@@ -340,7 +359,8 @@ wq_summary %>%
 ------------------------------------------------------------------------
 
 We could add the standard deviation as error bars using `geom_errorbar`
-or could plot the min or max instead of the mean. So many options!
+or could plot the min or max instead of the mean. So many options! Give
+that a try if you’re interested.
 
 However, we know there is strong seasonal variability. Let’s look at
 seasonal means instead of overall
@@ -390,7 +410,7 @@ Click to see a solution
 </summary>
 
 ``` r
-wq <- wq %>%
+wq_season_summary <- wq %>%
     group_by(LocationName, season, Parameter) %>%
     summarise(mean = mean(Value, na.rm = TRUE), median = median(Value, na.rm = TRUE),
         min = min(Value, na.rm = TRUE), max = max(Value, na.rm = TRUE), sd = sd(Value,
@@ -405,3 +425,124 @@ wq <- wq %>%
 ------------------------------------------------------------------------
 
 ### BONUS: plotting annual means again NPSFM bands
+
+We have a dataframe with the ranges of the NPSFM bands for each
+variable. We will need to read this in, merge together with our
+`wq_summary` dataframe, which has the annual median values for each
+variable. Then we will plot the data. But first we will have to do a
+little data manipulating…
+
+``` r
+# read in bands
+bands <- read.csv("./data/NPSFM_bands.csv")
+# we want to join `bands` with the `wq` dataframe, but the column name for
+# `Parameter` is called `variable`. We will rename this so it matches with `wq`
+
+bands <- bands %>%
+    rename(Parameter = variable)
+```
+
+The values of TN and TP in `bands$Parameter` are in mg/m3, whereas in
+`wq_summary` they are in g/m3. We need to first convert TN and TP in
+`wq_summary` into mg/m3 before we can merge the two dataframes together.
+
+``` r
+wq_summary <- wq_summary %>% 
+  select(LocationName, Parameter, year, median) %>% # select the columns we need
+  mutate(median = ifelse(Parameter %in% c('TN_gm3', 'TP_gm3'), median*1000, median),
+         Parameter = recode(Parameter, 
+                            'TN_gm3' = 'TN_mgm3',
+                            'TP_gm3' = 'TP_mgm3'))
+print(unique(wq_summary$Parameter))
+```
+
+    ## [1] "TN_mgm3"   "TP_mgm3"   "chla_mgm3" "secchi_m"
+
+Now that we have the columns in both of the dataframes `wq_summary` and
+`bands` set up properly, we can combine the two dataframes using the
+function `left_join`. This is another tidyverse function that merges two
+dataframes based on one or more common columns. It will keep all the
+rows from the first (left) dataframe and add any matching information in
+the second (right) dataframe. Here the matching columns is `Parameter`
+
+``` r
+nof <- left_join(wq_summary, bands, by = "Parameter")
+```
+
+    ## Warning in left_join(wq_summary, bands, by = "Parameter"): Detected an unexpected many-to-many relationship between `x` and `y`.
+    ## ℹ Row 1 of `x` matches multiple rows in `y`.
+    ## ℹ Row 5 of `y` matches multiple rows in `x`.
+    ## ℹ If a many-to-many relationship is expected, set `relationship =
+    ##   "many-to-many"` to silence this warning.
+
+This gives us a warning that there are “many-to-many relationships
+between x and y.” Sometimes this warning means that there is something
+wrong with your dataframe merge, but in this case, this is actually ok.
+It is telling us that in `bands` there are multiple matches for a single
+value of `Parameter` in `wq_summary`. That is because there are four
+values of `bands$band` (a, b, c, and d) which correspond to a single row
+in `wq_summary`. This has resulted in our new dataframe `nof` being much
+longer than the original `wq_summary` but that is expected behavior so
+we can ignore this warning.
+
+Now that we have our matching dataframe, we need to create maximum and
+minimum x values for which the color shading will be mapped onto our
+plot. These simply need to correspond to maximum and minimum years of
+our dataframe
+
+``` r
+nof <- nof %>%
+    group_by(Parameter) %>%
+    mutate(x_max = max(year), x_min = min(year))
+```
+
+If we look at `nof` again, we should have a minimum and maximum column
+for both x and y. We will use these in our plotting by adding a layer
+using `geom_rect` to map the colors of the different bands behind our
+points
+
+``` r
+ggplot(nof, aes(x = year, y = median, color = as.factor(LocationName))) +
+  geom_rect(aes(xmin = x_min,
+                xmax = x_max,
+                ymin = y_min,
+                ymax = y_max,
+                fill = band),
+            color = NA) +
+  geom_point(size = 2) +
+  scale_x_continuous(breaks = seq(min(wq_summary$year), max(wq_summary$year), by = 1)) + #formats the years on the x-axis
+  scale_fill_manual(values = c('#212529', '#495057', '#adb5bd', '#dee2e6')) +
+  facet_wrap(~Parameter, scales = 'free') +
+  labs(color = 'Site') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 75, hjust = 1))
+```
+
+    ## Warning: Removed 140 rows containing missing values or values outside the scale range
+    ## (`geom_rect()`).
+
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-25-1.png)<!-- -->
+
+***Challenge 6:*** *Secchi depth is not currently assessed as part of
+the NPSFM. Let’s remove it from our plot using the `filter` function:*
+
+<details>
+<summary>
+Click to see a solution
+</summary>
+
+``` r
+nof %>%
+    filter(Parameter != "secchi_m") %>%
+    ggplot(aes(x = year, y = median, color = as.factor(LocationName))) + geom_rect(aes(xmin = x_min,
+    xmax = x_max, ymin = y_min, ymax = y_max, fill = band), color = NA) + geom_point(size = 2) +
+    scale_fill_manual(values = c("#212529", "#495057", "#adb5bd", "#dee2e6")) + facet_wrap(~Parameter,
+    scales = "free", nrow = 2) + labs(color = "Site") + theme_bw() + theme(axis.text.x = element_text(angle = 75,
+    hjust = 1)) + scale_x_continuous(breaks = seq(min(wq_summary$year), max(wq_summary$year),
+    by = 1))  #formats the years on the x-axis
+```
+
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-26-1.png)<!-- -->
+</details>
+
+------------------------------------------------------------------------
