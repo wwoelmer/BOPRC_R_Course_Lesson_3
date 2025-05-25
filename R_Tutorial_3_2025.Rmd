@@ -152,7 +152,7 @@ ___
 <details>
 <summary>Click to see a solution</summary>
 
-```{r message=FALSE,tidy=TRUE,eval=FALSE}
+```{r message=FALSE,tidy=TRUE}
 wq_long <- wq_wide %>% 
   pivot_longer(TN_gm3:secchi_m, names_to = 'Parameter', values_to = 'Value')
 
@@ -171,7 +171,7 @@ ___
 <details>
 <summary>Click to see a solution</summary>
 
-```{r message=FALSE,tidy=TRUE,eval=FALSE}
+```{r message=FALSE,tidy=TRUE}
 ggplot(wq_long, aes(x = as.Date(Date), y = Value, color = LocationName)) +
   geom_line() +
   facet_wrap(~Parameter, scales = 'free') +

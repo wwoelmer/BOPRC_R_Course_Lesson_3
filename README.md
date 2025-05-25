@@ -292,6 +292,10 @@ ggplot(wq_long, aes(x = as.Date(Date), y = Value, color = LocationName)) + geom_
     facet_wrap(~Parameter, scales = "free") + theme_bw()
 ```
 
+    ## Warning: Removed 18 rows containing missing values or values outside the scale range
+    ## (`geom_line()`).
+
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 </details>
 
 ------------------------------------------------------------------------
