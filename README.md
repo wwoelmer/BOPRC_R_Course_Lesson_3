@@ -10,6 +10,7 @@ The main packages that we will use in this tutorial are:
 
 - **tidyverse**
 - **lubridate**
+- **BoPRC2025**
 
 Before attempting to install these packages, make sure your Primary CRAN
 Repository is set to:
@@ -30,11 +31,12 @@ Once all of these packages are installed you can load them using the
 ``` r
 library(tidyverse)
 library(lubridate)
+library(BoPRC2025) 
 ```
 
 First we will load in our data. This data has been downloaded from
-Aquarius using the R script which you can find ing
-`scripts/download_data_aquarius.R`. If you’d like to see how the data
+Aquarius using the R script which you can find at
+`scripts/download_data_aquarius.R` if you’d like to see how the data
 were downloaded. For today, we are skipping that step and reading in
 directly from a .csv file which was written after the Aquarius download.
 
@@ -52,8 +54,56 @@ wq <- wq %>%
   select(LocationName:Value, Parameter, Unit) # list the columns you want to keep, you can use, e.g. col1:col3 to select a range of columns
 ```
 
-Using the `uniqui` function, let’s see what are the lakes which are
-included in this dataset?
+One of the columns that we have selected is the `Time` column, which
+includes both a date and a time. It is always best practice is to format
+date/time objects with the appropriate timezone, otherwise R will assume
+a timezone, and that can lead to the wrong date being set for your
+timestamp. Here, we will use a function called `parse_date_time` which
+looks at the `Time` column, and then provides a list (using `c()`) of
+potential formats that the column will be in. Here, we list two formats,
+the first one has YMD and HMS (hours, minutes, seconds), the second one
+just has YMD, as some of the values in the `Time` column don’t have an
+associated time next to the date. We pair this with the `mutate`
+function, which we will learn more about below.
+
+NOTE: there are many ways to format/parse dates and times in R. This is
+just one example!
+
+``` r
+wq <- wq %>% mutate(Time = parse_date_time(Time,c("%Y-%m-%d %H:%M:%S","%Y-%m-%d"), tz = "etc/GMT+12"))
+```
+
+------------------------------------------------------------------------
+
+***Challenge 1:*** *What is the structure of `wq` now that you have
+updated the Time column?*
+
+<details>
+<summary>
+Click to see a solution
+</summary>
+
+``` r
+str(wq)
+```
+
+    ## 'data.frame':    6469 obs. of  5 variables:
+    ##  $ LocationName: chr  "Lake Rotoma at Site 1 (Integrated)" "Lake Rotoma at Site 1 (Integrated)" "Lake Rotoma at Site 1 (Integrated)" "Lake Rotoma at Site 1 (Integrated)" ...
+    ##  $ Time        : POSIXct, format: "2015-01-20 07:53:00" "2015-02-17 07:40:00" ...
+    ##  $ Value       : num  0.117 0.115 0.111 0.123 0.124 ...
+    ##  $ Parameter   : chr  "TN (g/m^3)" "TN (g/m^3)" "TN (g/m^3)" "TN (g/m^3)" ...
+    ##  $ Unit        : chr  "g/m^3" "g/m^3" "g/m^3" "g/m^3" ...
+
+``` r
+# This shows that the Time column is now a POSIXct object
+```
+
+</details>
+
+------------------------------------------------------------------------
+
+Using the `unique` function, let’s see what lakes which are included in
+this dataset.
 
 ``` r
 unique(wq$LocationName)
@@ -76,7 +126,7 @@ unique(wq$LocationName)
 
 ------------------------------------------------------------------------
 
-***Challenge 1:*** *Using the same `unique` function, what water quality
+***Challenge 2:*** *Using the same `unique` function, what water quality
 variables are included in this dataset, in the `Parameter` column?*
 
 <details>
@@ -113,10 +163,29 @@ wq <- wq %>%
         `TP (g/m^3)` = "TP_gm3"))
 ```
 
+As with anything in R, there are multiple ways to rename entries within
+a column like we have just done. We will rename the TN and TP values in
+the `Parameter` column using the `case_when` function so you can learn
+another method. Sometimes one method may be more intuitive to you than
+another.
+
+``` r
+wq <- wq %>% 
+  mutate(Parameter = case_when(  # create a new `Parameter` column based on a set of conditions
+    Parameter == "TN (g/m^3)" ~ "TN_gm3", # first condition: if the value of Parameter is "TN (g/m^3)", change it to "TN_gm3"
+    Parameter == "TP (g/m^3)" ~ "TP_gm3", # same but for TP
+    TRUE ~ Parameter)) # for any other cases, keep the original values of Parameter
+
+# provide case_when example
+```
+
 ------------------------------------------------------------------------
 
-***Challenge 2:*** *We have done this for TN and TP. Now try using the
-same method to recode chlorophyll-a and Secchi depth.*
+***Challenge 3:*** *We have done this for TN and TP. Now try using the
+same method to rename chlorophyll-a and Secchi depth using either
+`recode` or `case_when`. Make sure to name the new columns `chla_mgm3`
+and `secchi_m` (we will use these same names later in the code so they
+will need to match!)*
 
 <details>
 <summary>
@@ -141,7 +210,7 @@ ggplot(wq, aes(x = as.Date(Time), y = Value, color = LocationName)) + geom_point
     facet_wrap(~Parameter, scales = "free") + theme_bw()
 ```
 
-![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
 
 ``` r
 # the scales = 'free' in the facet_wrap() function allows the x and y-axes to
@@ -232,27 +301,28 @@ it)!! Ok, now let’s make a plot of chl-a over time, but colored in by
 Secchi (our original goal before all that data manipulation…)
 
 ``` r
-ggplot(wq_wide, aes(x = as.Date(Date), y = chla_mgm3, color = secchi_m)) + geom_point() +
-    facet_wrap(~LocationName) + scale_color_distiller(palette = "YlGnBu", direction = 2) +
-    theme_bw()
+wq_wide %>% 
+  filter(!is.na(secchi_m)) %>% # some values have NA for secchi so we will remove those
+  ggplot(aes(x = as.Date(Date), y = chla_mgm3, color = secchi_m)) +
+  geom_point() +
+  facet_wrap(~LocationName) +
+  scale_color_distiller(palette = 'YlGnBu', direction = 2) +
+  theme_bw() +
+  scale_y_log10() # this log-transforms the y axis and makes it easier to see the variability across sites
 ```
 
-    ## Warning: Removed 142 rows containing missing values or values outside the scale range
+    ## Warning: Removed 34 rows containing missing values or values outside the scale range
     ## (`geom_point()`).
 
-![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 ``` r
-# scale_color_distiller changes the color scheme, you can google
-# scale_color_distiller to find out other palettes you can use, direction = 2
-# just changes whether the scales goes from blue to yellow with blue as high or
-# low, in this case, we want blue to be high. try changing direction = 1 and
-# see what happens
+# scale_color_distiller changes the color scheme,  you can google scale_color_distiller to find out other palettes you can use, direction = 2 just changes whether the scales goes from blue to yellow with blue as high or low, in this case, we want blue to be high. try changing direction = 1 and see what happens
 ```
 
 ------------------------------------------------------------------------
 
-***Challenge 3a:*** *Now that we’ve used `pivot_wider`, try to use
+***Challenge 4a:*** *Now that we’ve used `pivot_wider`, try to use
 pivot_longer to turn your dataframe back into longer format*
 
 <details>
@@ -277,9 +347,9 @@ wq_long <- wq_wide %>%
 
 ------------------------------------------------------------------------
 
-***Challenge 3b:*** *Now that you’ve made your wq_long dataframe, try
+***Challenge 4b:*** *Now that you’ve made your wq_long dataframe, try
 making a plot with Date on the x-axis, Value on the y-axis, color by
-Parameter, and facet_wrap by LocationName. Use `geom_line` instead of
+LocationName, and facet_wrap by Parameter. Use `geom_line` instead of
 `geom_point`*
 
 <details>
@@ -289,13 +359,13 @@ Click to see a solution
 
 ``` r
 ggplot(wq_long, aes(x = as.Date(Date), y = Value, color = LocationName)) + geom_line() +
-    facet_wrap(~Parameter, scales = "free") + theme_bw()
+    facet_wrap(~Parameter, scales = "free") + theme_bw() + scale_y_log10()
 ```
 
-    ## Warning: Removed 18 rows containing missing values or values outside the scale range
+    ## Warning: Removed 19 rows containing missing values or values outside the scale range
     ## (`geom_line()`).
 
-![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 </details>
 
 ------------------------------------------------------------------------
@@ -318,28 +388,41 @@ wq_summary <- wq %>%
             na.rm = TRUE))
 ```
 
+Often, we actually need to calculate annual averages by the hydroyear,
+instead of the year. To do this, let’s use the `Bathing_Season` function
+in the `BoPRC2025` package, which calculates the hydroyear.
+
+``` r
+wq_summary <- wq %>%
+    # mutate(year = year(Time)) %>%
+mutate(hydroyear = Bathing_Season(Time)) %>%
+    group_by(LocationName, Parameter, hydroyear) %>%
+    summarise(mean = mean(Value, na.rm = TRUE), median = median(Value, na.rm = TRUE),
+        min = min(Value, na.rm = TRUE), max = max(Value, na.rm = TRUE), sd = sd(Value,
+            na.rm = TRUE))
+```
+
 View the wq_summary dataframe and familiarise yourself with it. Let’s
 plot the chl-a data to visualize it a bit more clearly.
 
 ``` r
 wq_summary %>% 
   filter(Parameter=='chla_mgm3') %>% # only plot TN
-  ggplot(aes(x = year, y = mean)) +
+  ggplot(aes(x = hydroyear, y = mean)) +
   geom_point() +
-  scale_x_continuous(breaks = seq(min(wq_summary$year), max(wq_summary$year), by = 1)) + # formats the years on the x-axis
   facet_wrap(~LocationName, scales = 'free') +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 75, hjust = 1))  +
   ylab('Mean Chl-a (mgm/m3)')
 ```
 
-![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
 
 ------------------------------------------------------------------------
 
-***Challenge 4:*** *That’s a lot of lakes to wrap your head around.
-Let’s create a plot for just Lake Rotorua at Site 2, and facet by
-Parameter*
+***Challenge 5:*** *That’s a lot of lakes to wrap your head around. For
+this challenge, create a plot for just Lake Rotorua at Site 2, and facet
+by Parameter*
 
 <details>
 <summary>
@@ -349,61 +432,72 @@ Click to see a solution
 ``` r
 wq_summary %>% 
   filter(LocationName=="Lake Rotorua at Site 2 (Integrated)") %>% # only plot TN
-  ggplot(aes(x = year, y = mean)) +
+  ggplot(aes(x = hydroyear, y = mean)) +
   geom_point(size = 2) +
-  scale_x_continuous(breaks = seq(min(wq_summary$year), max(wq_summary$year), by = 1)) + #formats the years on the x-axis
   facet_wrap(~Parameter, scales = 'free') +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 75, hjust = 1)) # this rotates the x-axis label since the LocationNames are long
 ```
 
-![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-21-1.png)<!-- -->
 </details>
 
 ------------------------------------------------------------------------
 
-We could add the standard deviation as error bars using `geom_errorbar`
-or could plot the min or max instead of the mean. So many options! Give
-that a try if you’re interested.
+We can also add the standard deviation as error bars using
+`geom_errorbar`.
+
+``` r
+wq_summary %>% 
+  filter(LocationName=="Lake Rotorua at Site 2 (Integrated)") %>% # only plot TN
+  ggplot(aes(x = hydroyear, y = mean)) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd, width = 0.2)) +
+  facet_wrap(~Parameter, scales = 'free') +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 75, hjust = 1)) # this rotates the x-axis label since the LocationNames are long
+```
+
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-22-1.png)<!-- -->
 
 However, we know there is strong seasonal variability. Let’s look at
 seasonal means instead of overall
 
-### The `mutate` and `ifelse` functions
+### The `mutate` and `case_when` functions
 
 The `mutate` function creates an entirely new column in our dataframe.
 This works similarly to `summarise` which we used above, except instead
 of summarising into a smaller dataframe, we use `mutate` across all our
 data and maintain the same number of rows. In order to do seasonal
 means, we need to first create a season identifier. We will pair
-`mutate` with `ifelse` which is a function that allows you to perform a
-conditional operation which says if(this condition), then do X, if not,
-do Y. Here, we are saying if the month of our time column is 12, 1, 2,
-make the new column ‘season’ = ‘summer’, if not set it to NA. We repeat
-this for each season.
+`mutate` with `case_when` which you used earlier. This function chains
+together multiple `ifelse` statements. Essentially, it allows you to
+perform a multiple conditional operations which says if(this condition),
+then do X, if not, do Y. Here, we are saying if the month of our time
+column is 12, 1, 2, make the new column ‘season’ = ‘summer’, and so on
+for the other month combination. The last argument
+`TRUE ~ NA_character_` says, if none of the conditions are met, assign
+it as NA.
 
 ``` r
 # go back to our original wq dataframe, not the summarised one and add a new
 # column: season
 wq <- wq %>%
-    mutate(season = ifelse(month(Time) %in% c(12, 1, 2), "summer", NA), season = ifelse(month(Time) %in%
-        c(3, 4, 5), "autumn", season), season = ifelse(month(Time) %in% c(6, 7, 8),
-        "winter", season), season = ifelse(month(Time) %in% c(9, 10, 11), "spring",
-        season))
-# this function says create a new column `season` and then we use the ifelse
-# function to do this for each season based on the month
+    mutate(season = case_when(month(Time) %in% c(12, 1, 2) ~ "summer", month(Time) %in%
+        c(3, 4, 5) ~ "autumn", month(Time) %in% c(6, 7, 8) ~ "winter", month(Time) %in%
+        c(9, 10, 11) ~ "spring", TRUE ~ NA_character_))  # default case, if needed
 ```
 
 Let’s plot the range of values across each season
 
 ``` r
 ggplot(wq, aes(x = season, y = Value)) + geom_boxplot() + facet_wrap(~Parameter,
-    scales = "free") + theme_bw()
+    scales = "free") + theme_bw() + scale_y_log10()
 ```
 
-![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-24-1.png)<!-- -->
 
-***Challenge 5:*** *It’s nice to see the boxplots, but we want the
+***Challenge 6:*** *It’s nice to see the boxplots, but we want the
 actual numbers for median, min, max, etc.. Calculate summary statistics
 for each lake, season, and parameter. HINT: We will bring back our
 friends `group_by` and `summarise` for this.*
@@ -418,7 +512,7 @@ wq_season_summary <- wq %>%
     group_by(LocationName, season, Parameter) %>%
     summarise(mean = mean(Value, na.rm = TRUE), median = median(Value, na.rm = TRUE),
         min = min(Value, na.rm = TRUE), max = max(Value, na.rm = TRUE), sd = sd(Value,
-            na.rm = TRUE))
+            na.rm = TRUE), perc_95 = quantile(Value, 0.95))
 
 # Open up your dataframe and see if all looks good. There should be one value
 # for each season, lake, and parameter
@@ -452,7 +546,7 @@ The values of TN and TP in `bands$Parameter` are in mg/m3, whereas in
 
 ``` r
 wq_summary <- wq_summary %>% 
-  select(LocationName, Parameter, year, median) %>% # select the columns we need
+  select(LocationName, Parameter, hydroyear, median) %>% # select the columns we need
   mutate(median = ifelse(Parameter %in% c('TN_gm3', 'TP_gm3'), median*1000, median),
          Parameter = recode(Parameter, 
                             'TN_gm3' = 'TN_mgm3',
@@ -497,7 +591,7 @@ our dataframe
 ``` r
 nof <- nof %>%
     group_by(Parameter) %>%
-    mutate(x_max = max(year), x_min = min(year))
+    mutate(x_max = max(hydroyear), x_min = min(hydroyear))
 ```
 
 If we look at `nof` again, we should have a minimum and maximum column
@@ -506,28 +600,21 @@ using `geom_rect` to map the colors of the different bands behind our
 points
 
 ``` r
-ggplot(nof, aes(x = year, y = median, color = as.factor(LocationName))) +
-  geom_rect(aes(xmin = x_min,
-                xmax = x_max,
-                ymin = y_min,
-                ymax = y_max,
-                fill = band),
-            color = NA) +
-  geom_point(size = 2) +
-  scale_x_continuous(breaks = seq(min(wq_summary$year), max(wq_summary$year), by = 1)) + #formats the years on the x-axis
-  scale_fill_manual(values = c('#212529', '#495057', '#adb5bd', '#dee2e6')) +
-  facet_wrap(~Parameter, scales = 'free') +
-  labs(color = 'Site') +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 75, hjust = 1))
+ggplot(nof, aes(x = hydroyear, y = median, color = as.factor(LocationName))) + geom_rect(aes(xmin = x_min,
+    xmax = x_max, ymin = y_min, ymax = y_max, fill = band), color = NA) + geom_point(size = 2) +
+    scale_fill_manual(values = c("#00A2E1FF", "#62BD19FF", "#FFC726FF", "#FF671FFF")) +
+    facet_wrap(~Parameter, scales = "free") + labs(color = "Site") + theme_bw() +
+    theme(axis.text.x = element_text(angle = 75, hjust = 1)) + scale_y_log10()
 ```
 
-    ## Warning: Removed 140 rows containing missing values or values outside the scale range
+    ## Warning in scale_y_log10(): log-10 transformation introduced infinite values.
+
+    ## Warning: Removed 153 rows containing missing values or values outside the scale range
     ## (`geom_rect()`).
 
-![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-25-1.png)<!-- -->
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-30-1.png)<!-- -->
 
-***Challenge 6:*** *Secchi depth is not currently assessed as part of
+***Challenge 7:*** *Secchi depth is not currently assessed as part of
 the NPSFM. Let’s remove it from our plot using the `filter` function:*
 
 <details>
@@ -538,15 +625,16 @@ Click to see a solution
 ``` r
 nof %>%
     filter(Parameter != "secchi_m") %>%
-    ggplot(aes(x = year, y = median, color = as.factor(LocationName))) + geom_rect(aes(xmin = x_min,
+    ggplot(aes(x = hydroyear, y = median, color = as.factor(LocationName))) + geom_rect(aes(xmin = x_min,
     xmax = x_max, ymin = y_min, ymax = y_max, fill = band), color = NA) + geom_point(size = 2) +
-    scale_fill_manual(values = c("#212529", "#495057", "#adb5bd", "#dee2e6")) + facet_wrap(~Parameter,
-    scales = "free", nrow = 2) + labs(color = "Site") + theme_bw() + theme(axis.text.x = element_text(angle = 75,
-    hjust = 1)) + scale_x_continuous(breaks = seq(min(wq_summary$year), max(wq_summary$year),
-    by = 1))  #formats the years on the x-axis
+    scale_fill_manual(values = c("#00A2E1FF", "#62BD19FF", "#FFC726FF", "#FF671FFF")) +
+    facet_wrap(~Parameter, scales = "free", nrow = 2) + labs(color = "Site") + theme_bw() +
+    theme(axis.text.x = element_text(angle = 75, hjust = 1)) + scale_y_log10()
 ```
 
-![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-26-1.png)<!-- -->
+    ## Warning in scale_y_log10(): log-10 transformation introduced infinite values.
+
+![](R_Tutorial_3_2025_files/figure-gfm/unnamed-chunk-31-1.png)<!-- -->
 </details>
 
 ------------------------------------------------------------------------
